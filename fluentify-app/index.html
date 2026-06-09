@@ -1,0 +1,689 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Fluentify - AI Communication Coach</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+  <!-- Include Lucide icons script -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+</head>
+<body>
+  
+  <!-- STITCH_SHADER_START:ANIMATION_1 -->
+  <div style="position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; z-index: -1; display: block; pointer-events: none;">
+  <canvas id="shader-canvas-ANIMATION_1" style="display:block;width:100%;height:100%"></canvas>
+  <script>
+  (function() {
+    const canvas = document.getElementById('shader-canvas-ANIMATION_1');
+
+    function syncSize() {
+      const w = canvas.clientWidth  || 1280;
+      const h = canvas.clientHeight || 720;
+      if (canvas.width !== w || canvas.height !== h) {
+        canvas.width  = w;
+        canvas.height = h;
+      }
+    }
+    if (typeof ResizeObserver !== 'undefined') {
+      new ResizeObserver(syncSize).observe(canvas);
+    }
+    syncSize();
+
+    const gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
+    if (!gl) return;
+    const vs = `attribute vec2 a_position;
+  varying vec2 v_texCoord;
+  void main() {
+    v_texCoord = a_position * 0.5 + 0.5;
+    gl_Position = vec4(a_position, 0.0, 1.0);
+  }`;
+    const fs = `
+  precision highp float;
+  varying vec2 v_texCoord;
+  uniform float u_time;
+  uniform vec2 u_resolution;
+  uniform vec2 u_mouse;
+
+  vec3 permute(vec3 x) { return mod(((x*34.0)+1.0)*x, 289.0); }
+
+  float snoise(vec2 v){
+    const vec4 C = vec4(0.211324865405187, 0.366025403784439,
+             -0.577350269189626, 0.024390243902439);
+    vec2 i  = floor(v + dot(v, C.yy) );
+    vec2 x0 = v -   i + dot(i, C.xx);
+    vec2 i1;
+    i1 = (x0.x > x0.y) ? vec2(1.0, 0.0) : vec2(0.0, 1.0);
+    vec4 x12 = x0.xyxy + C.xxzz;
+    x12.xy -= i1;
+    i = mod(i, 289.0);
+    vec3 p = permute( permute( i.y + vec3(0.0, i1.y, 1.0 ))
+    + i.x + vec3(0.0, i1.x, 1.0 ));
+    vec3 m = max(0.5 - vec3(dot(x0,x0), dot(x12.xy,x12.xy),
+      dot(x12.zw,x12.zw)), 0.0);
+    m = m*m ;
+    m = m*m ;
+    vec3 x = 2.0 * fract(p * C.www) - 1.0;
+    vec3 h = abs(x) - 0.5;
+    vec3 ox = floor(x + 0.5);
+    vec3 a0 = x - ox;
+    m *= 1.79284291400159 - 0.85373472095314 * ( a0*a0 + h*h );
+    vec3 g;
+    g.x  = a0.x  * x0.x  + h.x  * x0.y;
+    g.yz = a0.yz * x12.xz + h.yz * x12.yw;
+    return 130.0 * dot(m, g);
+  }
+
+  void main() {
+      vec2 uv = v_texCoord;
+      vec2 mouse = u_mouse / u_resolution;
+      
+      float n1 = snoise(uv * 3.0 + u_time * 0.2 + mouse * 0.5);
+      float n2 = snoise(uv * 2.0 - u_time * 0.15);
+      
+      vec3 color1 = vec3(0.8, 0.85, 1.0); // Soft Blue
+      vec3 color2 = vec3(0.9, 0.8, 1.0); // Soft Purple
+      vec3 color3 = vec3(0.8, 1.0, 0.9); // Soft Mint
+      
+      float mixFactor = smoothstep(-0.5, 0.5, n1 + n2 * 0.5);
+      vec3 finalColor = mix(color1, color2, mixFactor);
+      finalColor = mix(finalColor, color3, smoothstep(0.2, 0.8, n2));
+      
+      float rim = 1.0 - smoothstep(0.0, 0.5, abs(n1));
+      finalColor += rim * 0.1;
+      
+      gl_FragColor = vec4(finalColor * 0.95, 1.0);
+  }
+  `;
+    function cs(type, src) {
+      const s = gl.createShader(type);
+      gl.shaderSource(s, src);
+      gl.compileShader(s);
+      return s;
+    }
+    const prog = gl.createProgram();
+    gl.attachShader(prog, cs(gl.VERTEX_SHADER, vs));
+    gl.attachShader(prog, cs(gl.FRAGMENT_SHADER, fs));
+    gl.linkProgram(prog);
+    gl.useProgram(prog);
+    const buf = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 1,-1, -1,1, 1,1]), gl.STATIC_DRAW);
+    const pos = gl.getAttribLocation(prog, 'a_position');
+    gl.enableVertexAttribArray(pos);
+    gl.vertexAttribPointer(pos, 2, gl.FLOAT, false, 0, 0);
+    const uTime = gl.getUniformLocation(prog, 'u_time');
+    const uRes = gl.getUniformLocation(prog, 'u_resolution');
+    const uMouse = gl.getUniformLocation(prog, 'u_mouse');
+
+    let mouse = { x: canvas.width / 2, y: canvas.height / 2 };
+    window.addEventListener('mousemove', (event) => {
+      const rect = canvas.getBoundingClientRect();
+      if (rect.width && rect.height) {
+        const nx = (event.clientX - rect.left) / rect.width;
+        const ny = 1.0 - (event.clientY - rect.top) / rect.height;
+        mouse.x = nx * canvas.width;
+        mouse.y = ny * canvas.height;
+      }
+    });
+
+    function render(t) {
+      if (typeof ResizeObserver === 'undefined') syncSize();
+      gl.viewport(0, 0, canvas.width, canvas.height);
+      if (uTime) gl.uniform1f(uTime, t * 0.001);
+      if (uRes) gl.uniform2f(uRes, canvas.width, canvas.height);
+      if (uMouse) gl.uniform2f(uMouse, mouse.x, mouse.y);
+      gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+      requestAnimationFrame(render);
+    }
+    render(0);
+  })();
+  </script>
+  </div>
+  <!-- STITCH_SHADER_END:ANIMATION_1 -->
+
+  <nav style="background: rgba(246, 250, 254, 0.3); backdrop-filter: blur(12px);">
+    <div class="logo font-headline-md" style="font-weight: 800; color: var(--primary); display: flex; align-items: center; gap: 8px;">
+      <img src="logo.png" alt="Fluentify Logo" style="height: 32px; width: auto; border-radius: 50%;">
+      Fluentify
+    </div>
+    <div class="nav-links">
+      <a href="#hero" class="active" data-route="hero">Home</a>
+      <a href="#scenarios" data-route="scenarios">Scenarios</a>
+      <a href="#chat" data-route="chat">Practice</a>
+      <a href="#dashboard" data-route="dashboard">Dashboard</a>
+      <button class="clay-btn clay-btn-primary" style="padding: 8px 16px; margin-left: 16px;">Get Started</button>
+    </div>
+  </nav>
+
+  <div id="app-views" class="container">
+    
+    <!-- Hero Section -->
+    <div id="hero" style="min-height: 70vh; display: flex; align-items: center; padding: var(--stack-xl) 0;">
+      <div style="display: flex; align-items: center; width: 100%;">
+        <div class="hero-content" style="flex: 1;">
+          <div class="clay-chip mb-sm" style="background: rgba(255,255,255,0.8); color: var(--primary); backdrop-filter: blur(8px); display: inline-flex; align-items: center; gap: 4px;">
+            <i data-lucide="sparkles" style="width: 14px; height: 14px;"></i> AI-POWERED COACH
+          </div>
+          <h1 class="display-lg mb-md" style="font-size: 56px; line-height: 1.1; margin-top: 16px;">
+            Speak better, think clearer, <span style="color: var(--primary);">become<br>fluent and confident.</span>
+          </h1>
+          <p class="body-lg mb-lg" style="margin-top: 16px; margin-bottom: 40px; max-width: 600px;">
+            Practice real conversation with AI and get instant feedback to boost your confidence. No judgment, just pure growth through immersive simulations.
+          </p>
+          <div class="flex gap-md">
+            <button class="clay-btn clay-btn-primary" onclick="document.getElementById('scenarios').scrollIntoView({behavior: 'smooth'})">Explore Scenarios <i data-lucide="arrow-down" style="margin-left:8px; width:18px; height:18px;"></i></button>
+            <button class="clay-btn" onclick="document.getElementById('video').scrollIntoView({behavior: 'smooth'})">Try Video Mode</button>
+          </div>
+        </div>
+        
+        <div class="hero-image animate-float" style="margin-left: auto;">
+           <div class="clay-card" style="width: 350px; text-align: center;">
+             <div class="clay-chip mb-sm" style="background: var(--primary-container); color: var(--on-primary-container);">Daily Tip</div>
+             <h3 class="headline-md mb-sm">Pause before answering</h3>
+             <p class="body-md mb-md">Taking a 2-second pause shows thoughtfulness and gives you time to structure your thoughts.</p>
+             <div style="width: 60px; height: 60px; border-radius: 50%; background: linear-gradient(135deg, var(--secondary-container), var(--secondary)); margin: 0 auto; animation: pulse 3s infinite;"></div>
+           </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Scenarios Section -->
+    <div id="scenarios" style="min-height: 80vh; padding: 100px 0;">
+      <div style="text-align: center; margin-bottom: 64px;">
+        <h2 class="display-lg mb-md">Practice Scenarios</h2>
+        <p class="body-lg" style="color: var(--on-surface-variant); max-width: 600px; margin-left: auto; margin-right: auto;">
+          Choose a scenario below to start practicing your communication skills.
+        </p>
+      </div>
+
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: var(--stack-lg);">
+        <div class="clay-card" style="background: rgba(255,255,255,0.8); backdrop-filter: blur(12px); display: flex; flex-direction: column;">
+          <div class="clay" style="padding: 16px; border-radius: 50%; color: var(--primary); display: inline-block; margin-bottom: 16px; align-self: flex-start;"><i data-lucide="briefcase"></i></div>
+          <h3 class="headline-md mb-sm">Job Interview</h3>
+          <p class="body-md mb-md">Simulate real interview scenarios with AI. Refine your answers, improve communication, and boost your confidence.</p>
+          <button class="clay-btn w-full" style="background: rgba(255,255,255,0.5); margin-top: auto;">Start Practice</button>
+        </div>
+        
+        <div class="clay-card" style="background: rgba(255,255,255,0.8); backdrop-filter: blur(12px); display: flex; flex-direction: column;">
+          <div class="clay" style="padding: 16px; border-radius: 50%; color: var(--secondary); display: inline-block; margin-bottom: 16px; align-self: flex-start;"><i data-lucide="coffee"></i></div>
+          <h3 class="headline-md mb-sm">Casual Conversation</h3>
+          <p class="body-md mb-md">Master the art of small talk and social networking.</p>
+          <button class="clay-btn w-full" style="background: rgba(255,255,255,0.5); margin-top: auto;">Start Practice</button>
+        </div>
+
+        <div class="clay-card" style="background: rgba(255,255,255,0.8); backdrop-filter: blur(12px); display: flex; flex-direction: column;">
+          <div class="clay" style="padding: 16px; border-radius: 50%; color: var(--tertiary); display: inline-block; margin-bottom: 16px; align-self: flex-start;"><i data-lucide="graduation-cap"></i></div>
+          <h3 class="headline-md mb-sm">Viva/Exam</h3>
+          <p class="body-md mb-md">Practice structured answers and express your thoughts with clarity under pressure.</p>
+          <button class="clay-btn w-full" style="background: rgba(255,255,255,0.5); margin-top: auto;">Start Practice</button>
+        </div>
+
+        <div class="clay-card" style="background: rgba(255,255,255,0.8); backdrop-filter: blur(12px); display: flex; flex-direction: column;">
+          <div class="clay" style="padding: 16px; border-radius: 50%; color: #ff6b6b; display: inline-block; margin-bottom: 16px; align-self: flex-start;"><i data-lucide="target"></i></div>
+          <h3 class="headline-md mb-sm">Pitch</h3>
+          <p class="body-md mb-md">Persuade investors with a compelling, structured narrative.</p>
+          <button class="clay-btn w-full" style="background: rgba(255,255,255,0.5); margin-top: auto;">Start Practice</button>
+        </div>
+
+        <div class="clay-card" style="background: rgba(255,255,255,0.8); backdrop-filter: blur(12px); display: flex; flex-direction: column;">
+          <div class="clay" style="padding: 16px; border-radius: 50%; color: #845ef7; display: inline-block; margin-bottom: 16px; align-self: flex-start;"><i data-lucide="wand-2"></i></div>
+          <h3 class="headline-md mb-sm">Custom</h3>
+          <p class="body-md mb-md">Define your own roleplay scenarios for targeted practice.</p>
+          <button class="clay-btn w-full" style="background: rgba(255,255,255,0.5); margin-top: auto;">Start Practice</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Practice (Chat/Video) Section -->
+    <div id="chat" class="container" style="padding: 80px 0; min-height: 100vh;">
+      <div class="mb-lg">
+        <h2 class="headline-lg">Chat Mode</h2>
+        <p class="body-md" style="color: var(--on-surface-variant); margin-top: 4px;">Practice your communication in a simulated environment.</p>
+      </div>
+      <div style="display: flex; gap: 32px; max-width: 1200px; margin: 0 auto; align-items: stretch;">
+        
+        <!-- Left Column: Chat Area -->
+        <div style="flex: 1; display: flex; flex-direction: column; gap: 16px;">
+          
+          <!-- Top Bar -->
+          <div style="padding: 12px 24px; display: flex; justify-content: space-between; align-items: center; background: white; border-radius: 99px; box-shadow: 0 2px 12px rgba(0,0,0,0.02); border: 1px solid #f1f5f9;">
+            <div style="display: flex; align-items: center; gap: 12px; color: #64748b; font-size: 14px; font-weight: 500;">
+              <div style="width: 32px; height: 32px; border-radius: 50%; background: #e0e7ff; display: flex; align-items: center; justify-content: center; color: #818cf8;">
+                 <i data-lucide="sparkles" style="width: 16px; height: 16px;"></i>
+              </div>
+              Tone: Professional &bull; Level: Intermediate
+            </div>
+            <div style="background: #ccfbf1; color: #0f766e; border: none; padding: 6px 14px; font-weight: 700; font-size: 13px; border-radius: 99px;">02:45</div>
+          </div>
+
+          <!-- Chat Window -->
+          <div style="flex: 1; min-height: 500px; display: flex; flex-direction: column; background: white; border-radius: 24px; padding: 32px 24px; box-shadow: 0 2px 12px rgba(0,0,0,0.02); border: 1px solid #f1f5f9;">
+            <div id="chat-history" style="flex: 1; display: flex; flex-direction: column; gap: 24px; overflow-y: auto; padding-right: 8px;">
+              
+              <!-- AI Message -->
+              <div style="display: flex; gap: 16px; align-items: flex-start;">
+                <div style="width: 40px; height: 40px; border-radius: 50%; background: #818cf8; display: flex; align-items: center; justify-content: center; flex-shrink: 0; color: white;">
+                   <i data-lucide="sparkles" style="width: 20px; height: 20px;"></i>
+                </div>
+                <div style="padding: 16px 20px; border-radius: 20px; border-top-left-radius: 4px; background: white; border: 1px solid #e2e8f0; color: #1e293b; font-size: 15px; line-height: 1.5; max-width: 85%;">
+                  That sounds like a great achievement. Could you tell me more about how you handled the conflict within your team during that project?
+                </div>
+              </div>
+              
+              <!-- User Message -->
+              <div style="display: flex; gap: 16px; align-items: flex-start; flex-direction: row-reverse;">
+                <div style="width: 40px; height: 40px; border-radius: 50%; background: #2dd4bf; display: flex; align-items: center; justify-content: center; flex-shrink: 0; color: #1e293b;">
+                   <i data-lucide="user" style="width: 20px; height: 20px;"></i>
+                </div>
+                <div style="padding: 16px 20px; border-radius: 20px; border-top-right-radius: 4px; background: #eef2ff; color: #1e3a8a; font-size: 15px; line-height: 1.5; max-width: 85%;">
+                  Well, I try to talk with everyone and we find a solution together. It was hard but we did it in the end.
+                </div>
+              </div>
+
+              <!-- AI Typing -->
+              <div style="display: flex; gap: 16px; align-items: flex-start;">
+                <div style="width: 40px; height: 40px; border-radius: 50%; background: #818cf8; display: flex; align-items: center; justify-content: center; flex-shrink: 0; color: white;">
+                   <i data-lucide="sparkles" style="width: 20px; height: 20px;"></i>
+                </div>
+                <div style="padding: 16px 20px; border-radius: 20px; border-top-left-radius: 4px; background: white; border: 1px solid #e2e8f0; display: flex; align-items: center; gap: 4px;">
+                  <div style="width: 6px; height: 6px; border-radius: 50%; background: #cbd5e1; animation: pulse 1.5s infinite;"></div>
+                  <div style="width: 6px; height: 6px; border-radius: 50%; background: #cbd5e1; animation: pulse 1.5s infinite 0.2s;"></div>
+                  <div style="width: 6px; height: 6px; border-radius: 50%; background: #cbd5e1; animation: pulse 1.5s infinite 0.4s;"></div>
+                </div>
+              </div>
+
+            </div>
+          </div>
+          
+          <!-- Input Bar -->
+          <div style="padding: 8px; display: flex; align-items: center; gap: 8px; background: white; border-radius: 99px; box-shadow: 0 2px 12px rgba(0,0,0,0.02); border: 1px solid #f1f5f9;">
+             <button style="background: none; border: none; width: 48px; height: 48px; border-radius: 50%; color: #6366f1; cursor: pointer; display: flex; align-items: center; justify-content: center;"><i data-lucide="mic" style="width: 20px; height: 20px;"></i></button>
+             <input id="chat-input" type="text" placeholder="Type your response..." style="flex: 1; border: none; background: transparent; font-size: 15px; padding: 0 16px; outline: none; color: #1e293b;">
+             <button id="chat-send" style="background: #6366f1; border: none; width: 40px; height: 40px; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; cursor: pointer; box-shadow: 0 4px 12px rgba(99,102,241,0.3); margin-right: 4px;"><i data-lucide="send" style="width: 18px; height: 18px;"></i></button>
+          </div>
+
+        </div>
+        
+        <!-- Right Column: Feedback -->
+        <div style="width: 380px; display: flex; flex-direction: column; flex-shrink: 0;">
+           
+           <!-- Wrap cards in a container to push button to bottom -->
+           <div style="display: flex; flex-direction: column; gap: 16px; flex: 1;">
+           <!-- Confidence Score -->
+             <div style="background: white; border-radius: 24px; box-shadow: 0 2px 12px rgba(0,0,0,0.02); border: 1px solid #f1f5f9; padding: 32px 24px; text-align: center;">
+               <h3 style="font-size: 12px; font-weight: 700; letter-spacing: 1px; color: #64748b; margin-bottom: 24px; text-transform: uppercase;">Live Confidence Score</h3>
+               <div style="position: relative; width: 120px; height: 120px; margin: 0 auto 24px;">
+                 <svg viewBox="0 0 36 36" style="width: 100%; height: 100%;">
+                   <path d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke="#e2e8f0" stroke-width="3"></path>
+                   <path d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke="#4f46e5" stroke-width="3" stroke-dasharray="75, 100" class="circular-chart-ring"></path>
+                 </svg>
+                 <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); font-size: 28px; font-weight: 800; color: #1e293b;">75%</div>
+               </div>
+               <div style="display: flex; gap: 8px; justify-content: center;">
+                 <span style="background: #dcfce7; color: #166534; font-size: 11px; font-weight: 700; padding: 6px 12px; border-radius: 99px;">Stable Pace</span>
+                 <span style="background: #ffedd5; color: #9a3412; font-size: 11px; font-weight: 700; padding: 6px 12px; border-radius: 99px;">Good Tone</span>
+               </div>
+             </div>
+             
+             <!-- Grammar Correction -->
+             <div id="grammar-card" style="background: white; border-radius: 24px; box-shadow: 0 2px 12px rgba(0,0,0,0.02); border: 1px solid #fca5a5; padding: 20px;">
+               <div style="display: flex; align-items: center; gap: 8px; color: #1e293b; font-weight: 600; font-size: 14px; margin-bottom: 12px;">
+                 <span style="font-size: 18px; font-weight: 900; font-family: serif; color: #ef4444; margin-right: 2px;">A</span><span style="color: #ef4444; margin-left: -10px; margin-top: 8px;">_</span> Grammar Correction
+               </div>
+               <p id="grammar-original" style="font-size: 13px; color: #64748b; font-style: italic; margin-bottom: 12px;">"I try to talk..."</p>
+               <div style="background: #fef2f2; padding: 12px; border-radius: 8px;">
+                 <p id="grammar-correction" style="font-size: 13px; font-weight: 700; color: #ef4444; margin-bottom: 4px;">Try: "I tried to talk..."</p>
+                 <p style="font-size: 12px; color: #b91c1c;">Past simple is needed for completed actions.</p>
+               </div>
+             </div>
+             
+             <!-- Better Expression -->
+             <div id="expression-card" style="background: white; border-radius: 24px; box-shadow: 0 2px 12px rgba(0,0,0,0.02); border: 1px solid #6ee7b7; padding: 20px;">
+               <div style="display: flex; align-items: center; gap: 8px; color: #10b981; font-weight: 600; font-size: 14px; margin-bottom: 12px;">
+                 <i data-lucide="lightbulb" style="width: 18px; height: 18px;"></i> Better Expression
+               </div>
+               <p id="expression-text" style="font-size: 13px; color: #334155; margin-bottom: 12px;">Use more professional verbs to describe collaboration.</p>
+               <div style="background: #d1fae5; padding: 12px; border-radius: 8px;">
+                 <p style="font-size: 13px; font-weight: 700; color: #047857;">"I facilitated a discussion to align the team's objectives..."</p>
+               </div>
+             </div>
+             
+             <!-- Communication Tip -->
+             <div id="tip-card" style="background: white; border-radius: 24px; box-shadow: 0 2px 12px rgba(0,0,0,0.02); border: 1px solid #c7d2fe; padding: 20px;">
+               <div style="font-weight: 600; font-size: 14px; color: #1e293b; margin-bottom: 12px;">Communication Tip</div>
+               <div style="display: flex; gap: 12px; align-items: flex-start;">
+                 <div style="width: 6px; height: 6px; border-radius: 50%; background: #6366f1; margin-top: 6px; flex-shrink: 0;"></div>
+                 <p id="tip-text" style="font-size: 13px; color: #334155; line-height: 1.6;">Avoid using filler words like "well" and "kind of". Pausing for a second is more impactful than using a filler.</p>
+               </div>
+             </div>
+           </div>
+           
+           <!-- Finish Session Button at bottom -->
+           <button style="background: white; box-shadow: 0 2px 12px rgba(0,0,0,0.02); border: 1px solid #f1f5f9; width: 100%; border-radius: 99px; padding: 16px; font-weight: 600; font-size: 15px; color: #1e293b; display: flex; align-items: center; justify-content: center; gap: 8px; margin-top: 16px; cursor: pointer; transition: all 0.2s;">
+             <i data-lucide="log-out" style="width: 18px; height: 18px;"></i> Finish Session
+           </button>
+ 
+        </div>
+      </div>
+    </div>
+
+    <!-- Video AI Coaching Section -->
+    <div id="video" class="container" style="padding: 80px 0; min-height: 100vh;">
+      
+      <!-- Top Bar -->
+      <div style="display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 24px; max-width: 1200px; margin: 0 auto 24px;">
+        <div>
+          <h2 class="headline-lg">Video Coaching</h2>
+          <p class="body-md" style="color: var(--on-surface-variant); margin-top: 4px;">Scenario: Technical Interview Preparation</p>
+        </div>
+        <div style="display: flex; gap: 12px;">
+          <div class="clay-chip" style="background: #ccfbf1; color: #0f766e; font-weight: 600; padding: 8px 16px; border-radius: 99px; display: flex; align-items: center; gap: 8px;">
+            <i data-lucide="timer" style="width: 16px; height: 16px;"></i> 04:24
+          </div>
+          <div class="clay-chip" style="background: #fef2f2; color: #b91c1c; font-weight: 600; padding: 8px 16px; border-radius: 99px; display: flex; align-items: center; gap: 8px;">
+            <div style="width: 8px; height: 8px; border-radius: 50%; background: #ef4444;"></div> Recording Live
+          </div>
+        </div>
+      </div>
+
+      <div style="display: flex; gap: 32px; max-width: 1200px; margin: 0 auto; align-items: stretch;">
+        
+        <!-- Left Column: Video Feed -->
+        <div style="flex: 1; display: flex; flex-direction: column; gap: 24px;">
+          <div style="position: relative; width: 100%; border-radius: 24px; overflow: hidden; box-shadow: 0 20px 40px rgba(0,0,0,0.1); background: #1e293b; aspect-ratio: 16/9;">
+            
+            <!-- Default camera off state -->
+            <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); display: flex; flex-direction: column; align-items: center; gap: 16px; color: #64748b;">
+               <i data-lucide="video" style="width: 48px; height: 48px; opacity: 0.5;"></i>
+               <span style="font-weight: 500; font-size: 14px;">Camera is active...</span>
+            </div>
+            
+            <!-- Facial Tracking Overlay -->
+            <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 250px; height: 250px; border-radius: 50%; border: 1px solid rgba(99, 102, 241, 0.4); display: flex; align-items: center; justify-content: center;">
+              <div style="width: 100%; height: 1px; background: rgba(99, 102, 241, 0.3); position: absolute; top: 50%;"></div>
+              <div style="width: 1px; height: 100%; background: rgba(99, 102, 241, 0.3); position: absolute; left: 50%;"></div>
+            </div>
+
+            <!-- Top Left Pill (Expression) -->
+            <div style="position: absolute; top: 24px; left: 24px; background: rgba(255,255,255,0.4); backdrop-filter: blur(16px); padding: 8px 16px; border-radius: 12px; display: flex; align-items: center; gap: 12px; border: 1px solid rgba(255,255,255,0.5);">
+              <div style="width: 32px; height: 32px; border-radius: 50%; background: rgba(99,102,241,0.2); color: #4338ca; display: flex; align-items: center; justify-content: center;">
+                <i data-lucide="smile" style="width: 16px; height: 16px;"></i>
+              </div>
+              <div>
+                <div style="font-size: 10px; font-weight: 700; color: #4338ca; letter-spacing: 1px;">EXPRESSION</div>
+                <div style="font-size: 14px; font-weight: 600; color: #1e293b;">Smiling</div>
+              </div>
+            </div>
+
+            <!-- Top Right Pill (Eye Contact) -->
+            <div style="position: absolute; top: 24px; right: 24px; background: rgba(255,255,255,0.4); backdrop-filter: blur(16px); padding: 8px 16px; border-radius: 12px; display: flex; align-items: center; gap: 12px; border: 1px solid rgba(255,255,255,0.5);">
+              <div style="width: 32px; height: 32px; border-radius: 50%; background: rgba(16,185,129,0.2); color: #047857; display: flex; align-items: center; justify-content: center;">
+                <i data-lucide="eye" style="width: 16px; height: 16px;"></i>
+              </div>
+              <div>
+                <div style="font-size: 10px; font-weight: 700; color: #047857; letter-spacing: 1px;">EYE CONTACT</div>
+                <div style="font-size: 14px; font-weight: 600; color: #1e293b;">Good</div>
+              </div>
+            </div>
+
+            <!-- Bottom Center Pill (Stats) -->
+            <div style="position: absolute; bottom: 24px; left: 50%; transform: translateX(-50%); background: rgba(255,255,255,0.4); backdrop-filter: blur(16px); border-radius: 99px; display: flex; align-items: center; border: 1px solid rgba(255,255,255,0.5); padding: 8px 32px; gap: 48px;">
+              <div style="text-align: center;">
+                <div style="font-size: 10px; font-weight: 700; color: #475569; letter-spacing: 1px; margin-bottom: 2px;">CONFIDENCE</div>
+                <div style="font-size: 24px; font-weight: 700; color: #4f46e5;">85%</div>
+              </div>
+              <div style="width: 1px; height: 32px; background: rgba(0,0,0,0.1);"></div>
+              <div style="text-align: center;">
+                <div style="font-size: 10px; font-weight: 700; color: #475569; letter-spacing: 1px; margin-bottom: 2px;">FILLER WORDS</div>
+                <div style="font-size: 24px; font-weight: 700; color: #1e293b;">0</div>
+              </div>
+              <div style="width: 1px; height: 32px; background: rgba(0,0,0,0.1);"></div>
+              <div style="text-align: center;">
+                <div style="font-size: 10px; font-weight: 700; color: #475569; letter-spacing: 1px; margin-bottom: 2px;">PACE</div>
+                <div style="font-size: 24px; font-weight: 700; color: #059669;">Steady</div>
+              </div>
+            </div>
+          </div>
+          
+          <!-- Controls -->
+          <div style="display: flex; justify-content: center; gap: 24px; align-items: center;">
+            <button class="clay-btn" style="background: rgba(255,255,255,0.9); width: 56px; height: 56px; border-radius: 50%; padding: 0; color: #475569;"><i data-lucide="video"></i></button>
+            <button class="clay-btn" style="background: rgba(255,255,255,0.9); width: 56px; height: 56px; border-radius: 50%; padding: 0; color: #475569;"><i data-lucide="mic-off"></i></button>
+            <button class="clay-btn" style="background: #b91c1c; color: white; border-radius: 99px; padding: 12px 32px; font-weight: 600; display: flex; align-items: center; gap: 8px;">
+              <div style="width: 6px; height: 6px; border-radius: 50%; background: white;"></div> Finish Session
+            </button>
+            <button class="clay-btn" style="background: rgba(255,255,255,0.9); width: 56px; height: 56px; border-radius: 50%; padding: 0; color: #475569;"><i data-lucide="settings"></i></button>
+          </div>
+        </div>
+
+        <!-- Right Column: Analysis -->
+        <div style="width: 380px; display: flex; flex-direction: column; gap: 16px; flex-shrink: 0;">
+          
+          <!-- Live AI Prompt -->
+          <div class="clay-card" style="background: rgba(255,255,255,0.9); border: 2px solid #e0e7ff; padding: 24px;">
+            <div style="font-size: 13px; font-weight: 700; color: #4f46e5; letter-spacing: 1px; margin-bottom: 16px; display: flex; align-items: center; gap: 8px;">
+              LIVE AI PROMPT
+            </div>
+            <p style="font-size: 15px; color: #1e293b; line-height: 1.6;">
+              "Great start! Now try to elaborate more on your <span style="color: #4f46e5; font-weight: 600;">leadership experience</span> during the project crisis."
+            </p>
+          </div>
+
+          <!-- Small Metrics Row -->
+          <div style="display: flex; gap: 16px;">
+            <!-- WPM -->
+            <div class="clay-card" style="background: rgba(255,255,255,0.9); flex: 1; padding: 20px; text-align: center; display: flex; flex-direction: column; align-items: center; gap: 8px;">
+              <div style="width: 40px; height: 40px; border-radius: 50%; background: #dcfce7; color: #059669; display: flex; align-items: center; justify-content: center; margin-bottom: 4px;">
+                <i data-lucide="gauge" style="width: 20px; height: 20px;"></i>
+              </div>
+              <div style="font-size: 12px; font-weight: 700; color: #475569;">142 WPM</div>
+              <div style="font-size: 14px; font-weight: 600; color: #1e293b;">Ideal Tempo</div>
+            </div>
+            <!-- Cognitive Load -->
+            <div class="clay-card" style="background: rgba(255,255,255,0.9); flex: 1; padding: 20px; text-align: center; display: flex; flex-direction: column; align-items: center; gap: 8px;">
+              <div style="width: 40px; height: 40px; border-radius: 50%; background: #ffedd5; color: #9a3412; display: flex; align-items: center; justify-content: center; margin-bottom: 4px;">
+                <i data-lucide="brain" style="width: 20px; height: 20px;"></i>
+              </div>
+              <div style="font-size: 12px; font-weight: 700; color: #475569;">Cognitive Load</div>
+              <div style="font-size: 14px; font-weight: 600; color: #1e293b;">Optimal</div>
+            </div>
+          </div>
+
+          <!-- Active Analysis -->
+          <div class="clay-card" style="background: rgba(255,255,255,0.9); padding: 24px;">
+            <div style="font-size: 13px; font-weight: 700; color: #475569; letter-spacing: 1px; margin-bottom: 20px;">
+              ACTIVE ANALYSIS
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 12px;">
+              <div style="background: #e0e7ff; color: #4338ca; padding: 8px 16px; border-radius: 99px; font-size: 14px; font-weight: 500; display: inline-flex; align-items: center; gap: 8px; align-self: flex-start;">
+                <i data-lucide="check-circle-2" style="width: 16px; height: 16px;"></i> Clear Articulation
+              </div>
+              <div style="background: #dcfce7; color: #047857; padding: 8px 16px; border-radius: 99px; font-size: 14px; font-weight: 500; display: inline-flex; align-items: center; gap: 8px; align-self: flex-start;">
+                <i data-lucide="check-circle-2" style="width: 16px; height: 16px;"></i> Positive Tone
+              </div>
+              <div style="background: #e2e8f0; color: #475569; padding: 8px 16px; border-radius: 99px; font-size: 14px; font-weight: 500; display: inline-flex; align-items: center; gap: 8px; align-self: flex-start;">
+                <div style="width: 6px; height: 6px; border-radius: 50%; background: #94a3b8; animation: pulse 1.5s infinite;"></div> Detecting Keywords...
+              </div>
+            </div>
+          </div>
+
+          <!-- AI Coach Active -->
+          <div class="clay-card" style="background: rgba(255,255,255,0.9); padding: 24px; display: flex; align-items: center; gap: 16px;">
+            <div style="width: 48px; height: 48px; border-radius: 50%; background: #ccfbf1; color: #0d9488; display: flex; align-items: center; justify-content: center; flex-shrink: 0; box-shadow: 0 0 20px rgba(204,251,241,0.8);">
+              <i data-lucide="zap" style="width: 24px; height: 24px;"></i>
+            </div>
+            <div>
+              <div style="font-size: 15px; font-weight: 600; color: #1e293b; margin-bottom: 4px;">AI Coach Active</div>
+              <div style="font-size: 13px; color: #64748b;">Listening for filler words...</div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+    
+    <!-- Dashboard Section -->
+    <!-- Dashboard Section -->
+    <div id="dashboard" class="container" style="padding: 80px 0 120px 0;">
+      
+      <!-- Top Section -->
+      <div class="mb-lg" style="margin-bottom: 40px;">
+        <h2 class="headline-lg" style="font-weight: 800; font-size: 36px; color: #0f172a; margin-bottom: 8px;">Welcome back, Alex!</h2>
+        <p class="body-md" style="color: #475569; font-size: 16px;">Your communication skills are blooming today.</p>
+      </div>
+      
+      <!-- Three Score Cards Row -->
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 32px; margin-bottom: 32px;">
+        <!-- Confidence Score -->
+        <div class="clay-card" style="background: rgba(255,255,255,0.9); padding: 32px; text-align: center; border-radius: 24px;">
+          <div style="position: relative; width: 120px; height: 120px; margin: 0 auto 24px;">
+            <svg viewBox="0 0 36 36" style="width: 100%; height: 100%;">
+              <path d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke="#e2e8f0" stroke-width="4"></path>
+              <path d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke="#4f46e5" stroke-width="4" stroke-dasharray="88, 100"></path>
+            </svg>
+            <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); font-size: 28px; font-weight: 800; color: #4f46e5;">88%</div>
+          </div>
+          <h3 style="font-size: 16px; font-weight: 600; color: #1e293b; margin-bottom: 4px;">Confidence Score</h3>
+          <p style="font-size: 14px; color: #64748b;">Steady and composed</p>
+        </div>
+        
+        <!-- Clarity Score -->
+        <div class="clay-card" style="background: rgba(255,255,255,0.9); padding: 32px; text-align: center; border-radius: 24px;">
+          <div style="position: relative; width: 120px; height: 120px; margin: 0 auto 24px;">
+            <svg viewBox="0 0 36 36" style="width: 100%; height: 100%;">
+              <path d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke="#e2e8f0" stroke-width="4"></path>
+              <path d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke="#10b981" stroke-width="4" stroke-dasharray="92, 100"></path>
+            </svg>
+            <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); font-size: 28px; font-weight: 800; color: #10b981;">92%</div>
+          </div>
+          <h3 style="font-size: 16px; font-weight: 600; color: #1e293b; margin-bottom: 4px;">Clarity Score</h3>
+          <p style="font-size: 14px; color: #64748b;">Excellent articulation</p>
+        </div>
+        
+        <!-- Grammar Accuracy -->
+        <div class="clay-card" style="background: rgba(255,255,255,0.9); padding: 32px; text-align: center; border-radius: 24px;">
+          <div style="position: relative; width: 120px; height: 120px; margin: 0 auto 24px;">
+            <svg viewBox="0 0 36 36" style="width: 100%; height: 100%;">
+              <path d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke="#e2e8f0" stroke-width="4"></path>
+              <path d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke="#9a3412" stroke-width="4" stroke-dasharray="95, 100"></path>
+            </svg>
+            <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); font-size: 28px; font-weight: 800; color: #9a3412;">95%</div>
+          </div>
+          <h3 style="font-size: 16px; font-weight: 600; color: #1e293b; margin-bottom: 4px;">Grammar Accuracy</h3>
+          <p style="font-size: 14px; color: #64748b;">Fluent & natural</p>
+        </div>
+      </div>
+      
+      <!-- Middle Section -->
+      <div style="display: flex; gap: 32px; margin-bottom: 40px; align-items: stretch; flex-wrap: wrap;">
+        
+        <!-- Progress Tracking -->
+        <div class="clay-card" style="background: rgba(255,255,255,0.9); flex: 1; min-width: 600px; padding: 32px; border-radius: 24px; display: flex; flex-direction: column;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 40px;">
+            <h3 style="font-size: 20px; font-weight: 500; color: #0f172a;">Progress Tracking</h3>
+            <div style="display: flex; gap: 8px; background: rgba(241,245,249,0.5); padding: 4px; border-radius: 99px;">
+              <div style="background: #e0e7ff; color: #4338ca; font-weight: 700; font-size: 13px; padding: 6px 16px; border-radius: 99px;">Weekly</div>
+              <div style="color: #475569; font-weight: 600; font-size: 13px; padding: 6px 16px; border-radius: 99px;">Monthly</div>
+            </div>
+          </div>
+          
+          <div style="flex: 1; position: relative; min-height: 200px; display: flex; flex-direction: column; justify-content: space-between;">
+            <!-- Grid Lines -->
+            <div style="width: 100%; height: 1px; background: #f1f5f9; margin-top: 20px;"></div>
+            <div style="width: 100%; height: 1px; background: #f1f5f9; margin-top: 40px;"></div>
+            <div style="width: 100%; height: 1px; background: #f1f5f9; margin-top: 40px;"></div>
+            <div style="width: 100%; height: 1px; background: #f1f5f9; margin-top: 40px;"></div>
+            
+            <!-- SVG Chart Wave -->
+            <svg viewBox="0 0 800 200" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%;" preserveAspectRatio="none">
+               <defs>
+                 <filter id="wave-shadow" x="0" y="0" width="200%" height="200%">
+                   <feDropShadow dx="0" dy="10" stdDeviation="15" flood-color="#818cf8" flood-opacity="0.3"/>
+                 </filter>
+               </defs>
+               <path d="M 0 160 Q 200 160, 400 80 T 800 20" fill="none" stroke="#818cf8" stroke-width="12" stroke-linecap="round" filter="url(#wave-shadow)"/>
+            </svg>
+            
+            <!-- X-Axis Labels -->
+            <div style="display: flex; justify-content: space-between; padding-top: 16px; color: #64748b; font-size: 13px; font-weight: 500;">
+              <span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span><span>Sun</span>
+            </div>
+          </div>
+        </div>
+        
+        <!-- Right Column -->
+        <div style="width: 380px; flex-shrink: 0; display: flex; flex-direction: column; gap: 24px;">
+          
+          <!-- Weak Areas -->
+          <div class="clay-card" style="background: linear-gradient(135deg, #fff3e0, #ffebd2); padding: 32px; border-radius: 24px;">
+            <div style="display: flex; align-items: center; gap: 8px; color: #c2410c; font-size: 16px; font-weight: 500; margin-bottom: 24px;">
+              <i data-lucide="triangle-alert" style="width: 20px; height: 20px;"></i> Weak Areas
+            </div>
+            
+            <div style="display: flex; flex-direction: column; gap: 16px;">
+              <div style="background: rgba(255,255,255,0.6); padding: 20px; border-radius: 16px; border: 1px solid rgba(255,255,255,0.5);">
+                <h4 style="font-weight: 700; color: #9a3412; font-size: 14px; margin-bottom: 8px;">Filler Words</h4>
+                <p style="font-size: 14px; color: #475569; margin-bottom: 12px; line-height: 1.5;">You used "um" and "like" 14 times in your last session.</p>
+                <span style="background: white; color: #c2410c; font-size: 11px; font-weight: 700; padding: 4px 10px; border-radius: 99px; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">Actionable</span>
+              </div>
+              
+              <div style="background: rgba(255,255,255,0.6); padding: 20px; border-radius: 16px; border: 1px solid rgba(255,255,255,0.5);">
+                <h4 style="font-weight: 700; color: #9a3412; font-size: 14px; margin-bottom: 8px;">Speaking Pace</h4>
+                <p style="font-size: 14px; color: #475569; line-height: 1.5;">Slightly rushed during technical explanations.</p>
+              </div>
+            </div>
+          </div>
+          
+          <!-- Practice Live -->
+          <div class="clay-card" style="background: rgba(255,255,255,0.9); padding: 24px; border-radius: 24px;">
+            <h4 style="font-weight: 700; color: #1e1b4b; font-size: 16px; margin-bottom: 8px;">Practice Live</h4>
+            <p style="font-size: 14px; color: #4f46e5; line-height: 1.5;">Jump into a quick AI scenario to improve your filler word count.</p>
+          </div>
+          
+        </div>
+      </div>
+      
+      <!-- Bottom Section: Coaching Focus -->
+      <div>
+        <h3 style="font-size: 20px; font-weight: 500; color: #0f172a; margin-bottom: 24px;">Coaching Focus</h3>
+        <div style="display: flex; gap: 16px; flex-wrap: wrap;">
+          <div class="clay-chip" style="background: #d1fae5; color: #047857; font-weight: 500; font-size: 14px; padding: 10px 20px; border-radius: 99px; display: flex; align-items: center; gap: 8px;">
+            <i data-lucide="brain" style="width: 18px; height: 18px;"></i> Confidence
+          </div>
+          <div class="clay-chip" style="background: #e0e7ff; color: #4338ca; font-weight: 500; font-size: 14px; padding: 10px 20px; border-radius: 99px; display: flex; align-items: center; gap: 8px;">
+            <i data-lucide="activity" style="width: 18px; height: 18px;"></i> Pacing
+          </div>
+          <div class="clay-chip" style="background: #ffedd5; color: #9a3412; font-weight: 500; font-size: 14px; padding: 10px 20px; border-radius: 99px; display: flex; align-items: center; gap: 8px;">
+            <i data-lucide="users" style="width: 18px; height: 18px;"></i> Tone
+          </div>
+          <div class="clay-chip" style="background: #e2e8f0; color: #334155; font-weight: 500; font-size: 14px; padding: 10px 20px; border-radius: 99px; display: flex; align-items: center; gap: 8px;">
+            <i data-lucide="shield" style="width: 18px; height: 18px;"></i> Authority
+          </div>
+        </div>
+      </div>
+      
+    </div>
+    
+    <!-- Footer -->
+    <footer style="background: #f8fafc; padding: 32px 80px; display: flex; justify-content: space-between; align-items: center; border-radius: 24px 24px 0 0; margin-top: 80px; flex-wrap: wrap; gap: 16px;">
+      <div>
+        <div style="font-size: 15px; font-weight: 700; color: #4f46e5; margin-bottom: 8px;">Fluentify</div>
+        <div style="font-size: 13px; color: #475569; font-weight: 500;">&copy; 2024 Fluentify AI. All rights reserved.</div>
+      </div>
+      <div style="display: flex; gap: 24px; color: #475569; font-size: 14px; font-weight: 500;">
+        <a href="#" style="color: inherit; text-decoration: none;">Privacy</a>
+        <a href="#" style="color: inherit; text-decoration: none;">Terms</a>
+        <a href="#" style="color: inherit; text-decoration: none;">Twitter</a>
+        <a href="#" style="color: inherit; text-decoration: none;">Instagram</a>
+      </div>
+    </footer>
+    
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
